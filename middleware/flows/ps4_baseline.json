@@ -1,0 +1,91 @@
+[
+  {
+    "id": "tab_ps4_baseline",
+    "type": "tab",
+    "label": "PS4 Baseline",
+    "disabled": false,
+    "info": "Phase 1 — PS4 controller input via gamepad node. Transforms raw axis values and broadcasts normalized HMI data over WebSocket."
+  },
+  {
+    "id": "gamepad_in",
+    "type": "gamepad",
+    "z": "tab_ps4_baseline",
+    "name": "PS4 Controller",
+    "index": 0,
+    "x": 120,
+    "y": 160,
+    "wires": [["profile_map"]]
+  },
+  {
+    "id": "inject_tick",
+    "type": "inject",
+    "z": "tab_ps4_baseline",
+    "name": "50ms tick",
+    "repeat": "0.05",
+    "crontab": "",
+    "once": false,
+    "onceDelay": 0,
+    "topic": "",
+    "payload": "{\"tick\": true}",
+    "payloadType": "json",
+    "x": 120,
+    "y": 240,
+    "wires": [["profile_map"]]
+  },
+  {
+    "id": "profile_map",
+    "type": "function",
+    "z": "tab_ps4_baseline",
+    "name": "Profile Map (PS4)",
+    "func": "// Map raw PS4 gamepad data to canonical axis/button names.\n// Axes 1 and 3 (left/right stick Y) are inverted on PS4 hardware.\n\nconst prev = flow.get('rawAxes') || { boom: 0, stick: 0, bucket: 0, swing: 0 };\n\n// On a tick message with no gamepad data, carry forward previous raw values\nconst axes = msg.payload.axes || [\n  prev.bucket,   // axis 0 = left stick X\n  -prev.boom,    // axis 1 = left stick Y (uninvert for storage)\n  prev.swing,    // axis 2 = right stick X\n  -prev.stick    // axis 3 = right stick Y (uninvert for storage)\n];\n\nconst buttons = msg.payload.buttons || [];\n\nconst mapped = {\n  axes: {\n    boom:   -(axes[1] || 0),   // invert\n    stick:  -(axes[3] || 0),   // invert\n    bucket:   axes[0] || 0,\n    swing:    axes[2] || 0\n  },\n  buttons: {\n    deadman:     !!(buttons[7] && buttons[7].pressed),\n    mode_toggle: !!(buttons[3] && buttons[3].pressed),\n    reset:       !!(buttons[9] && buttons[9].pressed)\n  },\n  raw_connected: msg.payload.axes !== undefined\n};\n\nflow.set('rawAxes', mapped.axes);\nmsg.payload = mapped;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 340,
+    "y": 200,
+    "wires": [["transform_fn"]]
+  },
+  {
+    "id": "transform_fn",
+    "type": "function",
+    "z": "tab_ps4_baseline",
+    "name": "Transform Pipeline",
+    "func": "// Apply deadzone → rescale → lerp → clamp to each axis.\n// Persists previous smoothed values in flow context for lerp continuity.\n\nconst DEADZONE = 0.08;\nconst LERP_ALPHA = 0.15;\n\nfunction applyDeadzone(value, threshold) {\n  if (Math.abs(value) < threshold) return 0.0;\n  return value;\n}\n\nfunction rescaleAfterDeadzone(value, threshold) {\n  if (value === 0) return 0;\n  const sign = value > 0 ? 1 : -1;\n  return sign * (Math.abs(value) - threshold) / (1 - threshold);\n}\n\nfunction lerp(current, target, alpha) {\n  return current + (target - current) * alpha;\n}\n\nfunction clamp(value, min, max) {\n  return Math.max(min, Math.min(max, value));\n}\n\nfunction transformAxis(raw, prev) {\n  const dz = applyDeadzone(raw, DEADZONE);\n  const rs = rescaleAfterDeadzone(dz, DEADZONE);\n  const sm = lerp(prev, rs, LERP_ALPHA);\n  return clamp(sm, -1.0, 1.0);\n}\n\nconst prev = flow.get('prevAxes') || { boom: 0, stick: 0, bucket: 0, swing: 0 };\nconst raw = msg.payload.axes;\n\nconst smoothed = {\n  boom:   transformAxis(raw.boom,   prev.boom),\n  stick:  transformAxis(raw.stick,  prev.stick),\n  bucket: transformAxis(raw.bucket, prev.bucket),\n  swing:  transformAxis(raw.swing,  prev.swing)\n};\n\nflow.set('prevAxes', smoothed);\n\n// Safety: deadman switch forces all axes to 0\nconst deadman = msg.payload.buttons.deadman;\nconst safeAxes = deadman ? smoothed : { boom: 0, stick: 0, bucket: 0, swing: 0 };\n\nmsg.payload = {\n  timestamp: Date.now(),\n  device: 'ps4',\n  axes: safeAxes,\n  buttons: msg.payload.buttons,\n  meta: {\n    raw_connected: msg.payload.raw_connected,\n    profile: 'ps4'\n  }\n};\n\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "x": 560,
+    "y": 200,
+    "wires": [["websocket_out", "debug_out"]]
+  },
+  {
+    "id": "websocket_out",
+    "type": "websocket out",
+    "z": "tab_ps4_baseline",
+    "name": "WebSocket /ws/hmi",
+    "server": "ws_server",
+    "client": "",
+    "x": 780,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "debug_out",
+    "type": "debug",
+    "z": "tab_ps4_baseline",
+    "name": "Debug",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 780,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "ws_server",
+    "type": "websocket-listener",
+    "path": "/ws/hmi",
+    "wholemsg": "false"
+  }
+]

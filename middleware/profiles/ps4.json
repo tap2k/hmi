@@ -1,0 +1,20 @@
+{
+  "device": "ps4",
+  "transport": "gamepad",
+  "notes": "PS4 controller via node-red-contrib-gamepad. Internal dev baseline only — not referenced in client-facing materials.",
+  "axes": {
+    "boom":   { "source": "axis", "index": 1, "invert": true,  "notes": "Left stick Y — push forward = negative on PS4, invert to match convention" },
+    "stick":  { "source": "axis", "index": 3, "invert": true,  "notes": "Right stick Y — push forward = negative on PS4, invert to match convention" },
+    "bucket": { "source": "axis", "index": 0, "invert": false, "notes": "Left stick X" },
+    "swing":  { "source": "axis", "index": 2, "invert": false, "notes": "Right stick X" }
+  },
+  "buttons": {
+    "deadman":     { "source": "button", "index": 7,  "notes": "R2" },
+    "mode_toggle": { "source": "button", "index": 3,  "notes": "Triangle" },
+    "reset":       { "source": "button", "index": 9,  "notes": "Options" }
+  },
+  "transform": {
+    "deadzoneThreshold": 0.08,
+    "lerpAlpha": 0.15
+  }
+}
