@@ -352,6 +352,34 @@ These must be enforced in the middleware, not left to the frontend to handle:
 4. Update the WebSocket output endpoint if needed (same port, same path)
 5. The frontend requires **zero changes**
 
+**CAN Bus (read-only, on-machine input):**
+
+CAN (Controller Area Network) is the internal communication bus on CAT machines — every
+sensor, joystick, and controller talks over it using the J1939 protocol. Instead of
+wiring a separate input device, we can tap into the machine's existing CAN bus and read
+the operator's real control inputs.
+
+1. Connect a CAN-to-USB adapter (PCAN-USB, CANable, or similar) to the machine's CAN bus
+2. Obtain a DBC file from CAT defining the relevant signal IDs (joystick axes, button states)
+3. Bridge layer parses raw CAN frames → extracts signals using DBC definitions → normalizes
+   to the same -1.0 to 1.0 axis format
+4. Feed normalized values into the existing transform pipeline
+5. The frontend requires **zero changes**
+
+Scope: **read-only / input only** for now. Writing commands back to CAN requires functional
+safety certification (ISO 13849) and partnership with CAT's safety engineering team — this
+is not in scope for Phase 2.
+
+Hardware options (CAN adapters):
+- **PCAN-USB** (Peak Systems) — industry standard, ~$250
+- **CANable** — open-source USB adapter, ~$25
+- **CSS Electronics CANedge** — logs + streams, native J1939 support
+
+Open questions:
+- [ ] Can CAT provide a DBC file or signal list for the target machine's joystick channels?
+- [ ] Read-only tap — confirm physical access point on the CAN bus (OBD-II port, diagnostic connector, or direct wiring)
+- [ ] Is bidirectional CAN write on their future roadmap? (would require safety certification)
+
 The transform pipeline, WebSocket format, and all safety rules remain identical.
 
 ---
@@ -404,9 +432,73 @@ move the sticks. That's the pipeline proven end-to-end.
 
 ---
 
-## Phase 3: 3D Visualization
+## Phase 3: Figma-to-Frontend Keypad Flows
 
-Once Phase 2 hardware is proven, upgrade the frontend to a 3D visualization using Three.js.
+Convert customer-provided Figma keypad/display designs into interactive React pages
+wired to the live data pipeline.
+
+**Workflow:**
+1. Receive Figma file or viewer link from customer
+2. Use Figma as visual spec — extract layout, component hierarchy, states (active/error/disabled)
+3. Build React components from scratch (not auto-export — cleaner for interactive controls)
+4. Wire each keypad button/display element to the WebSocket data contract
+5. Add as a new page/view alongside existing Backhoe and Debug views
+
+**What Figma gives us:** layout, spacing, colors, typography, state visuals
+**What we build:** interaction logic, data binding, state management, hardware mapping
+
+**Extending the data contract:**
+- Keypad buttons map to existing or new fields in the canonical message format
+- Display elements bind to axis values, button states, or custom telemetry
+- New fields added without breaking existing views
+
+**Prerequisites:**
+- Customer shares Figma file with edit or dev-mode access
+- Flow logic documented (state machines, sequences) beyond just the visual spec
+- Confirm whether keypad is physical hardware or touchscreen UI
+
+---
+
+## Phase 4: Bidirectional Output Control
+
+Add command channel so the frontend can drive physical actuators (fans, relays, motors,
+lights) through the same middleware and hardware layer.
+
+**Architecture:**
+
+```
+Frontend (UI controls) → WebSocket → Middleware → ESP32/Arduino → Actuator (fan, relay, etc.)
+```
+
+**Command message format (client → server):**
+
+```json
+{
+  "command": "set_output",
+  "outputs": {
+    "fan_speed": 0.75,
+    "fan_power": true
+  }
+}
+```
+
+**Implementation:**
+1. Add `ws.onmessage` handler in middleware to receive and validate commands
+2. Forward validated commands to hardware over MQTT (`hmi/commands/outputs`) or serial
+3. Add output UI controls (toggles, sliders) to frontend
+4. ESP32/Arduino firmware listens for commands and drives PWM/relay pins
+5. Existing input pipeline unchanged — bidirectional runs on the same WebSocket connection
+
+**Safety (low-stakes actuators only — no heavy equipment writes without functional safety review):**
+- Validate command values in middleware before forwarding
+- Zero all outputs on WebSocket disconnect
+- Rate-limit command frequency
+
+---
+
+## Phase 5: 3D Visualization
+
+Upgrade the frontend to a 3D visualization using Three.js.
 
 **If Caterpillar can provide CAD assets:**
 - Convert STEP/SOLIDWORKS → GLTF using Blender or CAD conversion tooling
@@ -419,4 +511,4 @@ Once Phase 2 hardware is proven, upgrade the frontend to a 3D visualization usin
 - Same joint hierarchy, same axis mapping — just geometric primitives instead of a real model
 - Reads as "engineering simulation" aesthetic, appropriate for a prototyping toolkit
 
-The axis mapping and WebSocket contract established in Phase 1/2 carry forward unchanged into Phase 3.
+The axis mapping and WebSocket contract carry forward unchanged into this phase.
