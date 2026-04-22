@@ -1,0 +1,72 @@
+.light-glow  { transition: opacity 0.2s; }
+.light-body  { transition: fill 0.2s, filter 0.2s; }
+.light-lens  { transition: fill 0.2s; }
+
+.light-off .light-body { fill: #252a32 !important; filter: none !important; }
+.light-off .light-lens { fill: #1a1e24 !important; }
+.light-off .light-glow { opacity: 0 !important; }
+
+.light-on.work   .light-body { fill: #eef3ff; filter: drop-shadow(0 0 9px #ffffffcc); }
+.light-on.yellow .light-body { fill: #f0b800; filter: drop-shadow(0 0 10px #f5c832cc); }
+.light-on.beacon .light-body { fill: #e02020; filter: drop-shadow(0 0 7px #ff4040cc); }
+.light-on.rear   .light-body { fill: #ff2828; filter: drop-shadow(0 0 7px #ff3030bb); }
+.light-on.work   .light-glow { opacity: 1; }
+.light-on.yellow .light-glow { opacity: 1; }
+.light-on.beacon .light-glow { opacity: 1; }
+.light-on.rear   .light-glow { opacity: 1; }
+
+/* Headlight — 3 states: off / low-beam / high-beam (intensity) */
+.hl-glow-low, .hl-glow-high { opacity: 0; transition: opacity 0.2s; }
+.light-on.headlight.low-beam  .light-body { fill: #fff8d0; filter: drop-shadow(0 0 6px #fff8d0aa); }
+.light-on.headlight.low-beam  .light-lens { fill: #fff0a0; }
+.light-on.headlight.low-beam  .hl-glow-low { opacity: 0.7; }
+.light-on.headlight.high-beam .light-body { fill: #ffffff; filter: drop-shadow(0 0 14px #ffffffee); }
+.light-on.headlight.high-beam .light-lens { fill: #ffffff; }
+.light-on.headlight.high-beam .hl-glow-high { opacity: 1; }
+
+/* Parking / marker — amber */
+.light-on.parking .light-body { fill: #ff8030; filter: drop-shadow(0 0 6px #ff8030cc); }
+.light-on.parking .light-lens { fill: #ffd0a0; }
+.light-on.parking .light-glow { opacity: 0.95; }
+
+/* Turn signal — large amber chevrons (dashboard style) */
+.turn-arrow { fill: #2a2e36; transition: fill 0.2s, filter 0.2s; }
+.turn-glow  { opacity: 0; transition: opacity 0.2s; }
+.light-on.turn .turn-arrow { fill: #ffaa20; filter: drop-shadow(0 0 10px #ffcc40dd); }
+.light-on.turn .turn-glow  { opacity: 1; }
+
+/* Click directly on any fixture to toggle it */
+svg#loader g[id^="light-"], svg#loader g[id^="turn-"] { cursor: pointer; }
+
+/* Prevent text selection flashing on label <text> elements during clicks */
+svg#loader { user-select: none; -webkit-user-select: none; }
+
+/* Keypad — function-status keys (LEDs reflect derived function state) */
+.key-body  { transition: fill 0.15s, stroke 0.15s; }
+.key-label { transition: fill 0.15s; font-family: 'Barlow Condensed', 'Helvetica Neue', sans-serif; font-weight: 600; letter-spacing: 0.08em; }
+.key-code  { font-family: 'Share Tech Mono', monospace; }
+.key-led   { transition: fill 0.15s, filter 0.15s; }
+.key-led-ring { fill: none; stroke-width: 1; }
+
+.key-off .key-body     { fill: #1a1f28; stroke: #2a3540; }
+.key-off .key-label    { fill: #5a6a78; }
+.key-off .key-code     { fill: #2e4050; }
+.key-off .key-led      { fill: #1e2830; filter: none; }
+.key-off .key-led-ring { stroke: #2a3a48; }
+
+.key-on .key-body  { fill: #0f1e2a; stroke: #2a7aaa; }
+.key-on .key-label { fill: #c8dce8; }
+.key-on .key-code  { fill: #2a6a8a; }
+
+.key-on.led-white .key-led { fill: #eef3ff; filter: drop-shadow(0 0 5px #eef3ffcc); }
+.key-on.led-cyan  .key-led { fill: #40c0ff; filter: drop-shadow(0 0 5px #40c0ffcc); }
+.key-on.led-amber .key-led { fill: #ffaa20; filter: drop-shadow(0 0 5px #ffaa20cc); }
+.key-on.led-red   .key-led { fill: #ff4444; filter: drop-shadow(0 0 5px #ff4444cc); }
+
+.key-on.led-white .key-led-ring { stroke: #b0c8f0; }
+.key-on.led-cyan  .key-led-ring { stroke: #70d8ff; }
+.key-on.led-amber .key-led-ring { stroke: #f8e080; }
+.key-on.led-red   .key-led-ring { stroke: #ff8888; }
+
+svg#keypad g[id^="key-"] { cursor: pointer; }
+svg#keypad { user-select: none; -webkit-user-select: none; }

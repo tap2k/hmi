@@ -57,9 +57,14 @@ const AXIS_RIGHT_Y = 4;
 const BTN_BYTE_FACE     = 5;
 const BTN_BYTE_SHOULDER = 6;
 
-const BTN_TRI_MASK = 0x80; // triangle  — mode_toggle
+const BTN_TRI_MASK = 0x80; // triangle  — mode_toggle  AND lights.ALL
+const BTN_CIR_MASK = 0x40; // circle    — lights.PROFILE
+const BTN_CRO_MASK = 0x20; // cross     — lights.ROADING
+const BTN_SQU_MASK = 0x10; // square    — lights.BEAM
 const BTN_OPT_MASK = 0x20; // options   — reset
 const BTN_R2_MASK  = 0x08; // R2        — deadman
+const BTN_L1_MASK  = 0x01; // L1        — lights.BEACON
+const BTN_R1_MASK  = 0x02; // R1        — lights.PARKING
 
 // ─── Normalize 0–255 ADC value to -1.0 to 1.0 ────────────────────────────────
 function normalizeAxis(raw) {
@@ -71,6 +76,7 @@ let prevAxes = { left_x: 0, left_y: 0, right_x: 0, right_y: 0 };
 let rawState = {
   axes:    { left_x: 0, left_y: 0, right_x: 0, right_y: 0 },
   buttons: { deadman: false, mode_toggle: false, reset: false },
+  lights:  { ALL: false, PROFILE: false, BEAM: false, ROADING: false, BEACON: false, PARKING: false },
   connected: false
 };
 
@@ -115,6 +121,16 @@ function connectPS4() {
         mode_toggle: !!(buf[BTN_BYTE_FACE] & BTN_TRI_MASK),
         reset:       !!(buf[BTN_BYTE_SHOULDER] & BTN_OPT_MASK)
       };
+
+      // Lighting keypad — raw held state. Frontend does rising-edge detection.
+      rawState.lights = {
+        ALL:     !!(buf[BTN_BYTE_FACE]     & BTN_TRI_MASK),
+        PROFILE: !!(buf[BTN_BYTE_FACE]     & BTN_CIR_MASK),
+        BEAM:    !!(buf[BTN_BYTE_FACE]     & BTN_SQU_MASK),
+        ROADING: !!(buf[BTN_BYTE_FACE]     & BTN_CRO_MASK),
+        BEACON:  !!(buf[BTN_BYTE_SHOULDER] & BTN_L1_MASK),
+        PARKING: !!(buf[BTN_BYTE_SHOULDER] & BTN_R1_MASK),
+      };
     });
 
     device.on('error', (err) => {
@@ -157,6 +173,7 @@ setInterval(() => {
     device: 'ps4',
     axes: safeAxes,
     buttons: rawState.buttons,
+    lights: rawState.lights,
     meta: {
       raw_connected: rawState.connected,
       profile: 'ps4'

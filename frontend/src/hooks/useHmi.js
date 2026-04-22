@@ -7,6 +7,7 @@ const DEFAULT_STATE = {
   device: null,
   axes: { left_x: 0, left_y: 0, right_x: 0, right_y: 0 },
   buttons: { deadman: false, mode_toggle: false, reset: false },
+  lights: { ALL: false, PROFILE: false, BEAM: false, ROADING: false, BEACON: false, PARKING: false },
   meta: { raw_connected: false, profile: null },
 };
 
