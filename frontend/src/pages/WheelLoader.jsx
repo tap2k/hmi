@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import './WheelLoader.css';
 import { useHmi } from '../hooks/useHmi';
+import {
+  KEY_BEHAVIORS,
+  WORK_LIGHTS,
+  PARKING_LAMPS,
+  INITIAL_PROFILE,
+} from './keypadBehaviors';
 
 // Numpad 2/3/5/6/8/9 mirrors the 2×3 keypad layout spatially:
 //   Numpad 8 9 → ALL      PROFILE
@@ -24,11 +30,6 @@ const FIXTURE_TYPE = {
 
 const FIXTURE_IDS = Object.keys(FIXTURE_TYPE);
 const INITIAL_FIXTURES = Object.fromEntries(FIXTURE_IDS.map(id => [id, false]));
-
-// Work-light subset (what the PROFILE key controls and auto-saves)
-const WORK_LIGHTS = ['light-1', 'light-2', 'light-4', 'light-5', 'light-6', 'light-7'];
-const PARKING_LAMPS = ['light-FP', 'light-RP'];
-const INITIAL_PROFILE = Object.fromEntries(WORK_LIGHTS.map(id => [id, false]));
 
 export default function WheelLoader() {
   const [fixtures, setFixtures] = useState(INITIAL_FIXTURES);
@@ -57,7 +58,7 @@ export default function WheelLoader() {
     setHeadlight(h => (h === 'off' ? 'low' : h === 'low' ? 'high' : 'off'));
   };
 
-  // ── Derived state (keypad LEDs reflect current fixture state) ────────────
+  // ── Derived state bundle (used by keypad behavior table for LEDs + press) ─
   const allWorkOn = WORK_LIGHTS.every(id => fixtures[id]);
   const allParkOn = PARKING_LAMPS.every(id => fixtures[id]);
   const allOn = allWorkOn && allParkOn && headlight !== 'off';
@@ -66,101 +67,23 @@ export default function WheelLoader() {
     WORK_LIGHTS.every(id => fixtures[id] === savedProfile[id]) &&
     WORK_LIGHTS.some(id => savedProfile[id]);
 
-  const ledStates = {
-    ALL:     allOn,
-    PROFILE: profileMatches,
-    BEAM:    headlight === 'high',
-    ROADING: roadingOn,
-    BEACON:  fixtures['light-3'],
-    PARKING: allParkOn,
+  const keypadState = {
+    fixtures, headlight, savedProfile,
+    allWorkOn, allParkOn, allOn, roadingOn, profileMatches,
   };
 
-  // ── Keypad press handlers ─────────────────────────────────────────────────
+  const ledStates = Object.fromEntries(
+    Object.entries(KEY_BEHAVIORS).map(([key, b]) => [key, b.ledOn(keypadState)])
+  );
+
+  // ── Keypad press: look up behavior, apply returned state delta ────────────
   const pressKey = (key) => {
-    switch (key) {
-      case 'ALL': {
-        if (allOn) {
-          setFixtures(f => {
-            const n = { ...f };
-            [...WORK_LIGHTS, ...PARKING_LAMPS].forEach(id => (n[id] = false));
-            return n;
-          });
-          setHeadlight('off');
-          setStatus('All Lights turned off.');
-        } else {
-          setFixtures(f => {
-            const n = { ...f };
-            [...WORK_LIGHTS, ...PARKING_LAMPS].forEach(id => (n[id] = true));
-            return n;
-          });
-          setHeadlight('low');
-          setStatus('All Lights turned on.');
-        }
-        break;
-      }
-      case 'PROFILE': {
-        const anyWorkOn = WORK_LIGHTS.some(id => fixtures[id]);
-        if (anyWorkOn) {
-          // Per PDF: "All Work Lights Off" action
-          setFixtures(f => {
-            const n = { ...f };
-            WORK_LIGHTS.forEach(id => (n[id] = false));
-            return n;
-          });
-          setStatus('Lighting Profile turned off.');
-        } else {
-          const profileEmpty = !WORK_LIGHTS.some(id => savedProfile[id]);
-          if (profileEmpty) {
-            setStatus('Profile is empty — toggle lights manually to save one.');
-          } else {
-            setFixtures(f => ({ ...f, ...savedProfile }));
-            setStatus('Lighting Profile turned on.');
-          }
-        }
-        break;
-      }
-      case 'BEAM': {
-        if (headlight === 'off') {
-          setStatus('High Beam requires headlights to be on.');
-          return;
-        }
-        const next = headlight === 'low' ? 'high' : 'low';
-        setHeadlight(next);
-        setStatus(next === 'high' ? 'High Beam turned on.' : 'High Beam turned off.');
-        break;
-      }
-      case 'ROADING': {
-        if (roadingOn) {
-          // Roading OFF is unconditional — clears parking + headlights regardless of origin
-          setFixtures(f => ({ ...f, 'light-FP': false, 'light-RP': false }));
-          setHeadlight('off');
-          setStatus('Roading Lights turned off.');
-        } else {
-          setFixtures(f => ({ ...f, 'light-FP': true, 'light-RP': true }));
-          setHeadlight('low');
-          setStatus('Roading Lights turned on.');
-        }
-        break;
-      }
-      case 'BEACON': {
-        const next = !fixtures['light-3'];
-        setFixtures(f => ({ ...f, 'light-3': next }));
-        setStatus(next ? 'Beacon turned on.' : 'Beacon turned off.');
-        break;
-      }
-      case 'PARKING': {
-        if (allParkOn) {
-          setFixtures(f => ({ ...f, 'light-FP': false, 'light-RP': false }));
-          setStatus('Parking Lights turned off.');
-        } else {
-          setFixtures(f => ({ ...f, 'light-FP': true, 'light-RP': true }));
-          setStatus('Parking Lights turned on.');
-        }
-        break;
-      }
-      default:
-        break;
-    }
+    const behavior = KEY_BEHAVIORS[key];
+    if (!behavior) return;
+    const delta = behavior.press(keypadState);
+    if (delta.fixtures  !== undefined) setFixtures(delta.fixtures);
+    if (delta.headlight !== undefined) setHeadlight(delta.headlight);
+    if (delta.status    !== undefined) setStatus(delta.status);
   };
 
   // ── Keyboard: numpad 2/3/5/6/8/9 ──────────────────────────────────────────
@@ -202,7 +125,7 @@ export default function WheelLoader() {
   const hlCls = headlight === 'off'
     ? 'light-off headlight'
     : `light-on headlight ${headlight}-beam`;
-  const keyCls = (key, led) => `${ledStates[key] ? 'key-on' : 'key-off'} led-${led}`;
+  const keyCls = (key) => `${ledStates[key] ? 'key-on' : 'key-off'} led-${KEY_BEHAVIORS[key].ledColor}`;
 
   return (
     <div style={styles.page}>
@@ -478,7 +401,7 @@ export default function WheelLoader() {
         >
           <rect width="312" height="290" fill="#13171d"/>
 
-          <g id="key-ALL" className={keyCls('ALL', 'white')} onClick={() => pressKey('ALL')}>
+          <g id="key-ALL" className={keyCls('ALL')} onClick={() => pressKey('ALL')}>
             <rect className="key-body" x="16" y="16" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="138" cy="28" r="6"/>
             <circle className="key-led" cx="138" cy="28" r="4"/>
@@ -487,7 +410,7 @@ export default function WheelLoader() {
             <text className="key-code"  x="28" y="89" fontSize="9">K1</text>
           </g>
 
-          <g id="key-PROFILE" className={keyCls('PROFILE', 'cyan')} onClick={() => pressKey('PROFILE')}>
+          <g id="key-PROFILE" className={keyCls('PROFILE')} onClick={() => pressKey('PROFILE')}>
             <rect className="key-body" x="162" y="16" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="284" cy="28" r="6"/>
             <circle className="key-led" cx="284" cy="28" r="4"/>
@@ -495,7 +418,7 @@ export default function WheelLoader() {
             <text className="key-code"  x="174" y="89" fontSize="9">K2</text>
           </g>
 
-          <g id="key-BEAM" className={keyCls('BEAM', 'white')} onClick={() => pressKey('BEAM')}>
+          <g id="key-BEAM" className={keyCls('BEAM')} onClick={() => pressKey('BEAM')}>
             <rect className="key-body" x="16" y="106" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="138" cy="118" r="6"/>
             <circle className="key-led" cx="138" cy="118" r="4"/>
@@ -504,7 +427,7 @@ export default function WheelLoader() {
             <text className="key-code"  x="28" y="179" fontSize="9">K3</text>
           </g>
 
-          <g id="key-ROADING" className={keyCls('ROADING', 'white')} onClick={() => pressKey('ROADING')}>
+          <g id="key-ROADING" className={keyCls('ROADING')} onClick={() => pressKey('ROADING')}>
             <rect className="key-body" x="162" y="106" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="284" cy="118" r="6"/>
             <circle className="key-led" cx="284" cy="118" r="4"/>
@@ -513,7 +436,7 @@ export default function WheelLoader() {
             <text className="key-code"  x="174" y="179" fontSize="9">K4</text>
           </g>
 
-          <g id="key-BEACON" className={keyCls('BEACON', 'red')} onClick={() => pressKey('BEACON')}>
+          <g id="key-BEACON" className={keyCls('BEACON')} onClick={() => pressKey('BEACON')}>
             <rect className="key-body" x="16" y="196" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="138" cy="208" r="6"/>
             <circle className="key-led" cx="138" cy="208" r="4"/>
@@ -521,7 +444,7 @@ export default function WheelLoader() {
             <text className="key-code"  x="28" y="269" fontSize="9">K5</text>
           </g>
 
-          <g id="key-PARKING" className={keyCls('PARKING', 'amber')} onClick={() => pressKey('PARKING')}>
+          <g id="key-PARKING" className={keyCls('PARKING')} onClick={() => pressKey('PARKING')}>
             <rect className="key-body" x="162" y="196" width="134" height="78" rx="6" strokeWidth="1"/>
             <circle className="key-led-ring" cx="284" cy="208" r="6"/>
             <circle className="key-led" cx="284" cy="208" r="4"/>
