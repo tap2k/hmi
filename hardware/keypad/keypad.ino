@@ -1,33 +1,34 @@
 /*
- * keypad.ino — 6-button lighting keypad for the HMI demo
+ * keypad.ino — 6-button lighting keypad with 6 status LEDs
  *
  * Target: Arduino UNO R3 (or R4)
- * Output: newline-delimited JSON on USB serial at 115200 baud
+ * Baud:   115200
  *
- * Each button is read with INPUT_PULLUP — wire one leg to the digital pin,
- * the other (diagonal) leg to GND. No external resistors needed.
+ * Inputs:  6 buttons on D2/D3/D5/D6/D8/D9 (INPUT_PULLUP, wired to GND).
+ * Outputs: 6 status LEDs on A0..A5 (used as digital outputs), each in series
+ *          with a 220Ω resistor to GND.
  *
- * Sample line (pressed ALL only):
- *   {"ALL":1,"PROFILE":0,"BEAM":0,"ROADING":0,"BEACON":0,"PARKING":0}
+ * Protocol (USB serial, newline-terminated):
+ *   Arduino  →  host : {"ALL":1,"PROFILE":0,"BEAM":0,"ROADING":0,"BEACON":1,"PARKING":0}
+ *                      (raw held state — host does rising-edge detection)
+ *   host    →  Arduino: L:100010
+ *                      (mirror of current function-LED state in KEY_ORDER —
+ *                       ALL, PROFILE, BEAM, ROADING, BEACON, PARKING)
  *
- * The middleware (middleware/server.js) auto-detects the serial port,
- * parses each JSON line, and forwards state into the canonical lights block.
- * Rising-edge detection happens frontend-side, so sending raw held state
- * continuously is correct — do NOT edge-detect here.
+ * Key order is fixed: [ALL, PROFILE, BEAM, ROADING, BEACON, PARKING].
+ * Must stay in lockstep with KEY_ORDER in frontend/src/pages/keypadBehaviors.js.
  */
 
 const int NUM_KEYS = 6;
 
-// Digital pins — feel free to re-wire; update these to match.
-const int PINS[NUM_KEYS]     = {  2,     3,        5,      6,        8,       9       };
-const char* KEYS[NUM_KEYS]   = { "ALL", "PROFILE", "BEAM", "ROADING", "BEACON", "PARKING" };
+const int PINS[NUM_KEYS]    = {  2,     3,        5,      6,        8,       9       };
+const int LED_PINS[NUM_KEYS] = { A0,    A1,       A2,     A3,       A4,      A5      };
+const char* KEYS[NUM_KEYS]  = { "ALL", "PROFILE", "BEAM", "ROADING", "BEACON", "PARKING" };
 
-const unsigned long DEBOUNCE_MS      = 15;    // per-pin settling window
-const unsigned long HEARTBEAT_MS     = 250;   // emit at least this often so middleware
-                                              // sees us even with nothing pressed
-const unsigned long LOOP_DELAY_MS    = 5;
+const unsigned long DEBOUNCE_MS   = 15;
+const unsigned long HEARTBEAT_MS  = 250;
+const unsigned long LOOP_DELAY_MS = 5;
 
-bool lastReported[NUM_KEYS];
 bool stableState[NUM_KEYS];
 bool candidateState[NUM_KEYS];
 unsigned long candidateSince[NUM_KEYS];
@@ -37,9 +38,10 @@ void setup() {
   Serial.begin(115200);
   for (int i = 0; i < NUM_KEYS; i++) {
     pinMode(PINS[i], INPUT_PULLUP);
+    pinMode(LED_PINS[i], OUTPUT);
+    digitalWrite(LED_PINS[i], LOW);
     stableState[i]    = false;
     candidateState[i] = false;
-    lastReported[i]   = false;
     candidateSince[i] = 0;
   }
 }
@@ -50,17 +52,29 @@ void emitState() {
     Serial.print('"'); Serial.print(KEYS[i]); Serial.print("\":");
     Serial.print(stableState[i] ? '1' : '0');
     if (i < NUM_KEYS - 1) Serial.print(',');
-    lastReported[i] = stableState[i];
   }
   Serial.println('}');
 }
 
+// Parse an inbound "L:xxxxxx" line and drive the LED pins accordingly.
+void handleIncoming() {
+  if (!Serial.available()) return;
+  String line = Serial.readStringUntil('\n');
+  if (line.startsWith("L:") && line.length() >= 2 + NUM_KEYS) {
+    for (int i = 0; i < NUM_KEYS; i++) {
+      digitalWrite(LED_PINS[i], line.charAt(2 + i) == '1' ? HIGH : LOW);
+    }
+  }
+}
+
 void loop() {
+  handleIncoming();
+
   unsigned long now = millis();
   bool stateChanged = false;
 
   for (int i = 0; i < NUM_KEYS; i++) {
-    // INPUT_PULLUP: LOW = pressed, HIGH = released. Invert to get "pressed" bool.
+    // INPUT_PULLUP: LOW = pressed, HIGH = released.
     bool reading = (digitalRead(PINS[i]) == LOW);
 
     if (reading != candidateState[i]) {

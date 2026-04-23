@@ -3,6 +3,7 @@ import './WheelLoader.css';
 import { useHmi } from '../hooks/useHmi';
 import {
   KEY_BEHAVIORS,
+  KEY_ORDER,
   WORK_LIGHTS,
   PARKING_LAMPS,
   INITIAL_PROFILE,
@@ -106,7 +107,7 @@ export default function WheelLoader() {
   // ── PS4 controller: rising-edge detection on lights.<KEY> ─────────────────
   // Middleware sends raw held state (true while button is down). We fire
   // pressKey only on the false→true transition so a held button = one action.
-  const { data: hmi } = useHmi();
+  const { data: hmi, send } = useHmi();
   const prevLightsRef = useRef({});
 
   useEffect(() => {
@@ -119,6 +120,14 @@ export default function WheelLoader() {
     }
     prevLightsRef.current = lights;
   }, [hmi.lights]);
+
+  // ── Mirror LED state down to the Arduino hardware keypad ──────────────────
+  // Packed bit-string in KEY_ORDER (e.g. "100010" = ALL on, BEACON on).
+  // Middleware forwards "L:100010\n" to the Arduino, which lights the LEDs.
+  const ledBits = KEY_ORDER.map(k => ledStates[k] ? '1' : '0').join('');
+  useEffect(() => {
+    send({ type: 'leds', bits: ledBits });
+  }, [ledBits, send]);
 
   // ── Class-name helpers ────────────────────────────────────────────────────
   const cls = (id) => `${fixtures[id] ? 'light-on' : 'light-off'} ${FIXTURE_TYPE[id]}`;

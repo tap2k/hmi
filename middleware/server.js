@@ -90,11 +90,35 @@ let rawState = {
 let ps4Lights     = { ...EMPTY_LIGHTS };
 let arduinoLights = { ...EMPTY_LIGHTS };
 
+// Last LED-command string received from the frontend (e.g. "L:100010\n").
+// Cached so we can replay it to the Arduino as soon as it (re)connects.
+let lastLedCommand = null;
+
 // ─── WebSocket server ─────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ port: WS_PORT, path: WS_PATH });
 
 wss.on('listening', () => {
   console.log(`[hmi-middleware] WebSocket server running at ws://localhost:${WS_PORT}${WS_PATH}`);
+});
+
+// Inbound messages from the frontend. Currently just LED mirror commands for
+// the Arduino hardware keypad: { type: 'leds', bits: '100010' }.
+wss.on('connection', (ws) => {
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data);
+      if (msg.type === 'leds' && typeof msg.bits === 'string' && /^[01]{6}$/.test(msg.bits)) {
+        lastLedCommand = `L:${msg.bits}\n`;
+        if (arduinoPort && arduinoPort.writable) {
+          arduinoPort.write(lastLedCommand, (err) => {
+            if (err) console.warn('[hmi-middleware] LED write failed:', err.message);
+          });
+        }
+      }
+    } catch {
+      // ignore malformed
+    }
+  });
 });
 
 function broadcast(data) {
@@ -185,7 +209,11 @@ async function connectArduino() {
     });
     const reader = port.pipe(new ReadlineParser({ delimiter: '\n' }));
 
-    port.on('open',  () => console.log(`[hmi-middleware] Arduino keypad connected on ${path}`));
+    port.on('open',  () => {
+      console.log(`[hmi-middleware] Arduino keypad connected on ${path}`);
+      // Replay last-known LED state so hardware syncs with the frontend immediately.
+      if (lastLedCommand) port.write(lastLedCommand);
+    });
     port.on('error', (err) => {
       console.warn('[hmi-middleware] Arduino error:', err.message);
       arduinoPort = null;

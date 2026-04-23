@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 const WS_URL = 'ws://localhost:3009/ws/hmi';
 
@@ -44,5 +44,14 @@ export function useHmi() {
     return () => wsRef.current?.close();
   }, []);
 
-  return { data, connected };
+  // Send a message upstream to the middleware (e.g., LED status for Arduino).
+  // Silently no-ops if the socket isn't open.
+  const send = useCallback((message) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    }
+  }, []);
+
+  return { data, connected, send };
 }

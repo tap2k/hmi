@@ -16,9 +16,11 @@ Total build time: ~30 minutes (most of it wiring).
 | 1 | USB-A to USB-B cable (the one that came with the board) |
 | 1 | Breadboard |
 | 6 | Pushbuttons (tact switches) |
-| ~14 | Jumper wires (any color) |
+| 6 | LEDs (any color — one per button for function status) |
+| 6 | 220Ω resistors (to current-limit the LEDs) |
+| ~26 | Jumper wires |
 
-**Not needed:** external resistors (we use the Arduino's internal pull-ups), the 9V battery (the USB cable powers the board), the LCD/LEDs/motors/sensors (save those for later phases).
+**Not needed:** button pull-up resistors (we use the Arduino's internal pull-ups), the 9V battery (the USB cable powers the board), motors/sensors/LCD (save those for later phases).
 
 ---
 
@@ -48,14 +50,18 @@ When you push a button into the breadboard, **straddle the center gutter** so tw
 
 The sketch is pre-configured for these pins:
 
-| Button | Digital Pin | Label on on-screen keypad |
-|--------|-------------|---------------------------|
-| ALL     | D2 | Numpad 8 |
-| PROFILE | D3 | Numpad 9 |
-| BEAM    | D5 | Numpad 5 |
-| ROADING | D6 | Numpad 6 |
-| BEACON  | D8 | Numpad 2 |
-| PARKING | D9 | Numpad 3 |
+| Function | Button (input) | Status LED (output) | Numpad |
+|----------|---------------:|--------------------:|-------:|
+| ALL      | D2 | A0 | 8 |
+| PROFILE  | D3 | A1 | 9 |
+| BEAM     | D5 | A2 | 5 |
+| ROADING  | D6 | A3 | 6 |
+| BEACON   | D8 | A4 | 2 |
+| PARKING  | D9 | A5 | 3 |
+
+Buttons live on the digital side (D2–D9); status LEDs live on the analog side
+(A0–A5 used as digital outputs). Keeps inputs and outputs on opposite edges
+of the UNO for clean wiring.
 
 ### Layout (3 rows × 2 cols, matches the screen)
 
@@ -95,7 +101,7 @@ BREADBOARD — top-down view (straddling center gutter):
           ▼             ▼
 ```
 
-### Wiring checklist
+### Wiring checklist — buttons
 
 Work through these in order. Each ✓ is ~30 seconds.
 
@@ -105,7 +111,28 @@ Work through these in order. Each ✓ is ~30 seconds.
 - [ ] For each button: jumper the **diagonally opposite leg** of the same button to the ground rail.
 - [ ] Visual check: no jumpers crossing gutters horizontally except the button bodies themselves; no two pins shorted together.
 
-You should end up with 6 pin-wires + 6 GND-wires + 1 rail-to-Arduino GND = **13 jumpers total**.
+### Wiring checklist — LEDs
+
+Each LED needs: **anode (long leg) → Arduino analog pin via 220Ω resistor**, **cathode (short leg, flat side) → ground rail**.
+
+- [ ] Place 6 LEDs on the breadboard, one near each button so the pairing is obvious.
+- [ ] Check leg orientation — the longer leg is the anode (+), shorter leg is the cathode (−). Most LEDs also have a flat side on the cathode.
+- [ ] For each LED: plug a 220Ω resistor between the anode leg and the row that connects to the assigned analog pin (A0/A1/A2/A3/A4/A5).
+- [ ] For each LED: jumper the cathode leg to the ground rail.
+- [ ] Jumper each analog pin (A0–A5) to the row on the breadboard that feeds the LED via its resistor.
+
+**Why the resistor:** LEDs pull as much current as they can when connected directly, burning themselves out. A 220Ω resistor caps the current at ~15 mA — safe and plenty bright.
+
+**Which color for which function** is purely cosmetic — wire whichever LED color you have where. If you want to match the on-screen keypad:
+
+| Function | Suggested LED color | Reason |
+|----------|---------------------|--------|
+| ALL / BEAM / ROADING | white (or yellow if no white) | work-light family |
+| PROFILE              | blue                          | system / UI |
+| BEACON               | red                           | beacon = red |
+| PARKING              | yellow                        | amber marker |
+
+Total jumper count with LEDs added: 6 pin-wires (buttons) + 6 GND-wires (buttons) + 6 pin-wires (LEDs) + 6 GND-wires (LEDs) + 1 rail-to-Arduino GND = **25 jumpers** (plus 6 resistors inline).
 
 ---
 
@@ -165,6 +192,8 @@ npm run dev
 
 Open <http://localhost:5173/>. Press a physical button — within ~50ms the status banner should fire (e.g. *"Roading Lights turned on."*) and the loader fixtures should update. The same action works from the PS4 controller and the numpad; they all converge on the same logic.
 
+**The hardware LEDs now mirror the on-screen keypad LEDs.** Toggle ALL via numpad `8` and watch the physical ALL LED light up along with the browser. The mirror works in both directions — any input path (SVG click, numpad, PS4, hardware button) updates both the screen and the hardware LEDs.
+
 ---
 
 ## 8. Troubleshooting
@@ -178,12 +207,16 @@ Open <http://localhost:5173/>. Press a physical button — within ~50ms the stat
 | `Arduino keypad connected` briefly then disconnects | Another process grabbed the port | Close other IDEs / monitor tools pointing at the same device |
 | Frontend status banner fires twice per press | Debounce too short | Edit `DEBOUNCE_MS` in the sketch (default 15ms) — try 25ms |
 | Arduino found but JSON never arrives | Upload succeeded to the wrong board variant | In Tools → Board, confirm "Arduino Uno" is selected |
+| LED doesn't light but button works | LED wired backwards (cathode on pin side) | Flip the LED — long leg to resistor/pin, short leg to GND |
+| LED very dim or nothing | Resistor too large, or wrong pin | Confirm 220Ω (red-red-brown-gold bands), confirm anode row is on the assigned analog pin |
+| Wrong LED lights up for the button pressed | LED pin jumpers in wrong order | Verify A0→ALL, A1→PROFILE, A2→BEAM, A3→ROADING, A4→BEACON, A5→PARKING |
+| All LEDs dim / flickering | Too much current draw or bad resistor | Confirm all 6 resistors present; don't skip any |
 
 ---
 
-## 9. Extending this later (optional, not needed for the demo)
+## 9. Extending this later (optional)
 
-- **Local status LEDs** — one per button using the red/green/yellow LEDs in the kit. Easiest form: flash while held (no upstream comm needed). Wire each LED to an unused digital pin with a 220Ω resistor in series.
-- **LCD status banner** — the 16×2 LCD in the kit can echo the latest banner ("Roading Lights turned on."). Would require bidirectional serial so the middleware pushes state back to the Arduino.
-- **Enclosure** — once the layout is locked in, move the buttons from the breadboard to a protoboard or custom PCB. That's when soldering enters the picture.
-- **Wireless** — requires an R4 WiFi (or adding an ESP32). Publish to MQTT or directly open a WebSocket to the middleware. Frontend behavior is unchanged.
+- **LCD status banner** — the 16×2 LCD in the kit can echo the latest banner ("Roading Lights turned on."). Piggyback on the existing bidirectional serial — add a new `S:<text>` protocol line from middleware, display on LCD.
+- **Enclosure** — once the layout is locked in, move the buttons + LEDs from the breadboard to a protoboard or custom PCB. That's when soldering enters the picture.
+- **Wireless** — requires an R4 WiFi (or adding an ESP32). Publish to MQTT or open a WebSocket directly to the middleware. Frontend behavior is unchanged.
+- **Mode-specific LEDs** — e.g., pulse the BEACON LED instead of solid-on, mirror the on-screen animation. Add a per-LED blink state in the sketch.

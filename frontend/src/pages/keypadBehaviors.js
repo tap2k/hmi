@@ -117,4 +117,6 @@ export const KEY_BEHAVIORS = {
   },
 };
 
+// Canonical order — used by the Arduino LED protocol (bit-string L:xxxxxx).
+// Do NOT reorder without updating the Arduino sketch's LED_PINS array in lockstep.
 export const KEY_ORDER = ['ALL', 'PROFILE', 'BEAM', 'ROADING', 'BEACON', 'PARKING'];
