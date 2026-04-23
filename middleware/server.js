@@ -10,11 +10,17 @@
 
 const HID = require('node-hid');
 const { WebSocketServer } = require('ws');
+const { SerialPort } = require('serialport');
+const { ReadlineParser } = require('@serialport/parser-readline');
 const { transformAxis } = require('./config/transform.js');
 
 const WS_PORT = 3009;
 const WS_PATH = '/ws/hmi';
 const TICK_MS = 50;
+
+const ARDUINO_PATH = process.env.ARDUINO_PORT || null;  // optional override
+const ARDUINO_BAUD = 115200;
+const EMPTY_LIGHTS = { ALL: false, PROFILE: false, BEAM: false, ROADING: false, BEACON: false, PARKING: false };
 
 // Sony PS4 DualShock 4
 const PS4_VENDOR_ID  = 1356;
@@ -76,9 +82,13 @@ let prevAxes = { left_x: 0, left_y: 0, right_x: 0, right_y: 0 };
 let rawState = {
   axes:    { left_x: 0, left_y: 0, right_x: 0, right_y: 0 },
   buttons: { deadman: false, mode_toggle: false, reset: false },
-  lights:  { ALL: false, PROFILE: false, BEAM: false, ROADING: false, BEACON: false, PARKING: false },
+  lights:  { ...EMPTY_LIGHTS },
   connected: false
 };
+
+// Two independent light-input sources. Merged (OR'd) into rawState.lights at broadcast.
+let ps4Lights     = { ...EMPTY_LIGHTS };
+let arduinoLights = { ...EMPTY_LIGHTS };
 
 // ─── WebSocket server ─────────────────────────────────────────────────────────
 const wss = new WebSocketServer({ port: WS_PORT, path: WS_PATH });
@@ -122,8 +132,8 @@ function connectPS4() {
         reset:       !!(buf[BTN_BYTE_SHOULDER] & BTN_OPT_MASK)
       };
 
-      // Lighting keypad — raw held state. Frontend does rising-edge detection.
-      rawState.lights = {
+      // Lighting keypad — raw held state from PS4. Merged with Arduino at broadcast.
+      ps4Lights = {
         ALL:     !!(buf[BTN_BYTE_FACE]     & BTN_TRI_MASK),
         PROFILE: !!(buf[BTN_BYTE_FACE]     & BTN_CIR_MASK),
         BEAM:    !!(buf[BTN_BYTE_FACE]     & BTN_SQU_MASK),
@@ -136,6 +146,7 @@ function connectPS4() {
     device.on('error', (err) => {
       console.warn('[hmi-middleware] Controller disconnected:', err.message);
       rawState.connected = false;
+      ps4Lights = { ...EMPTY_LIGHTS };
       device = null;
     });
 
@@ -148,10 +159,81 @@ function connectPS4() {
   }
 }
 
+// ─── Arduino serial reader (6-button lighting keypad) ────────────────────────
+let arduinoPort = null;
+
+async function connectArduino() {
+  if (arduinoPort) return;
+  try {
+    let path = ARDUINO_PATH;
+    if (!path) {
+      // Auto-detect: look for the first port that looks like an Arduino/USB-serial
+      const ports = await SerialPort.list();
+      const candidate = ports.find(p =>
+        /usbmodem|usbserial|wchusbserial/i.test(p.path) ||
+        /arduino/i.test(p.manufacturer || '')
+      );
+      if (!candidate) return;
+      path = candidate.path;
+    }
+
+    const port = new SerialPort({ path, baudRate: ARDUINO_BAUD }, (err) => {
+      if (err) {
+        arduinoPort = null;
+        arduinoLights = { ...EMPTY_LIGHTS };
+      }
+    });
+    const reader = port.pipe(new ReadlineParser({ delimiter: '\n' }));
+
+    port.on('open',  () => console.log(`[hmi-middleware] Arduino keypad connected on ${path}`));
+    port.on('error', (err) => {
+      console.warn('[hmi-middleware] Arduino error:', err.message);
+      arduinoPort = null;
+      arduinoLights = { ...EMPTY_LIGHTS };
+    });
+    port.on('close', () => {
+      console.warn('[hmi-middleware] Arduino disconnected');
+      arduinoPort = null;
+      arduinoLights = { ...EMPTY_LIGHTS };
+    });
+
+    reader.on('data', (line) => {
+      try {
+        const parsed = JSON.parse(line);
+        arduinoLights = {
+          ALL:     !!parsed.ALL,
+          PROFILE: !!parsed.PROFILE,
+          BEAM:    !!parsed.BEAM,
+          ROADING: !!parsed.ROADING,
+          BEACON:  !!parsed.BEACON,
+          PARKING: !!parsed.PARKING,
+        };
+      } catch {
+        // ignore malformed lines
+      }
+    });
+
+    arduinoPort = port;
+  } catch {
+    // port doesn't exist yet — will retry next tick
+  }
+}
+
 // ─── Transform + broadcast tick ───────────────────────────────────────────────
 setInterval(() => {
   // Try to reconnect if disconnected
   if (!device) connectPS4();
+  if (!arduinoPort) connectArduino();
+
+  // Merge lights from all sources (PS4 OR Arduino keypad)
+  rawState.lights = {
+    ALL:     ps4Lights.ALL     || arduinoLights.ALL,
+    PROFILE: ps4Lights.PROFILE || arduinoLights.PROFILE,
+    BEAM:    ps4Lights.BEAM    || arduinoLights.BEAM,
+    ROADING: ps4Lights.ROADING || arduinoLights.ROADING,
+    BEACON:  ps4Lights.BEACON  || arduinoLights.BEACON,
+    PARKING: ps4Lights.PARKING || arduinoLights.PARKING,
+  };
 
   const raw = rawState.axes;
 
@@ -181,5 +263,6 @@ setInterval(() => {
   });
 }, TICK_MS);
 
-// Initial connection attempt
+// Initial connection attempts
 connectPS4();
+connectArduino();

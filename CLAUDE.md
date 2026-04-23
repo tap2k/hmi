@@ -1,11 +1,31 @@
 # HMI Prototyping Toolkit — CLAUDE.md
 
+## Working Conventions (Claude, read first)
+
+**Do not use the auto-memory system on this project.** No writes to `~/.claude/projects/.../memory/`,
+no `MEMORY.md`, no memory files of any kind. All durable project context — user
+preferences, architectural decisions, constraints, non-obvious rules — lives in this
+CLAUDE.md. If something would otherwise be saved as a project/feedback/user/reference
+memory, add it to this file in the appropriate section instead. If no section fits,
+add a short note here under Working Conventions.
+
+---
+
 ## Project Overview
 
 This is a hardware-agnostic HMI prototyping toolkit built for Caterpillar. The system
-allows an operator to control a browser-based machine visualization (initially a backhoe
-simulator) using a physical input device. The middleware sits between the input device and
-the frontend, transforming raw hardware signals into clean, normalized control data.
+allows an operator to control a browser-based machine visualization using a physical
+input device. The middleware sits between the input device and the frontend, transforming
+raw hardware signals into clean, normalized control data.
+
+**Primary demo (Phase 1):** a wheel loader lighting control page at `/` — 12 interactive
+SVG light fixtures driven by a 6-key function keypad with PDF-spec semantics (ALL /
+PROFILE / LOW·HIGH BEAM / ROADING / BEACON / PARKING). Three converging input paths:
+direct SVG click, keyboard numpad, and PS4 controller buttons. See the **Lighting
+Demo** section below for details.
+
+**Secondary demo:** a backhoe visualizer at `/backhoe` — proves the pipeline works for
+analog axes (swing, boom, stick, bucket driven by the PS4 sticks).
 
 The full stack has three layers, each in its own directory:
 
@@ -25,11 +45,13 @@ the other — they only know about the normalized data format this layer produce
 
 ## Current Phase
 
-**Phase 1 — PS4 Controller Baseline**
+**Phase 1 — Wheel Loader Lighting Demo (primary) + PS4 Controller Baseline**
 
-We are using a PS4 controller as the initial input device. The goal is to prove the
-full data pipeline — input → transform → WebSocket → browser — with zero hardware risk
-before introducing the ESP32 and industrial joystick.
+The wheel loader lighting page is the primary Caterpillar-facing demo for Phase 1. It
+exercises the full data pipeline — hardware input → middleware transform → WebSocket →
+browser — using a PS4 controller as the initial input device. The backhoe view runs
+alongside as the analog-axis baseline. Both prove the stack works with zero hardware
+risk before introducing the ESP32 or industrial joystick.
 
 ---
 
@@ -55,17 +77,25 @@ before introducing the ESP32 and industrial joystick.
 ├── frontend/                        ← React/Vite visualization app (hmi-frontend)
 │   ├── package.json
 │   ├── vite.config.js
+│   ├── data/                        ← design artifacts (gitignored) — standalone SVGs
+│   │   ├── wheel-loader-lights.svg  ← source of truth for the loader graphic
+│   │   └── keypad-lights.svg        ← source of truth for the 6-key keypad
 │   └── src/
 │       ├── main.jsx
-│       ├── App.jsx                  ← top-level: view toggle (debug / backhoe)
+│       ├── App.jsx                  ← routes: / wheel-loader, /backhoe, /debug
 │       ├── hooks/
 │       │   └── useHmi.js            ← WebSocket hook, auto-reconnect
 │       ├── components/
 │       │   └── AxisBar.jsx          ← reusable axis bar for debug view
 │       └── pages/
+│           ├── WheelLoader.jsx      ← primary demo: 12 fixtures + 6-key keypad
+│           ├── WheelLoader.css      ← co-located styles (light states, keypad LEDs)
 │           ├── Debug.jsx            ← raw data debug view (axes + buttons)
 │           └── Backhoe.jsx          ← split-view backhoe visualizer
-└── hardware/                        ← Device firmware (hmi-hardware, Phase 2)
+└── hardware/                        ← Device firmware
+    └── keypad/                      ← 6-button Arduino UNO R3 lighting keypad
+        ├── keypad.ino               ← sketch: reads 6 buttons, emits JSON over USB serial
+        └── README.md                ← detailed build / wiring / troubleshooting guide
 ```
 
 ---
@@ -103,6 +133,14 @@ WebSocket. The frontend depends only on this format — it never knows what hard
     "mode_toggle": false,
     "reset": false
   },
+  "lights": {
+    "ALL":     false,
+    "PROFILE": false,
+    "BEAM":    false,
+    "ROADING": false,
+    "BEACON":  false,
+    "PARKING": false
+  },
   "meta": {
     "raw_connected": true,
     "profile": "ps4"
@@ -125,6 +163,18 @@ WebSocket. The frontend depends only on this format — it never knows what hard
 - `deadman` — operator must hold this for any movement to register (safety requirement)
 - `mode_toggle` — switches between control modes if implemented
 - `reset` — returns visualization to neutral pose
+
+### Lights conventions
+
+- All light keys are booleans representing **raw held state** — true while the physical
+  button is down, false when released
+- The frontend does **rising-edge detection** — a held button fires the function action
+  once, not continuously. The middleware stays stateless about press events.
+- The 6 keys map to **function-level commands** (what the operator wants), NOT
+  individual light fixtures. See the **Lighting Demo** section for the full
+  function-to-fixture mapping and constraint rules.
+- `mode_toggle` and `lights.ALL` share the same physical byte (△). They are different
+  views of the same press — consumers read whichever block they care about.
 
 ---
 
@@ -336,6 +386,86 @@ These must be enforced in the middleware, not left to the frontend to handle:
 
 ---
 
+## Lighting Demo (Phase 1 Primary)
+
+The wheel loader lighting page at `/` is the primary Caterpillar-facing demo. It
+demonstrates the full pipeline against a realistic operator-facing task (lighting control)
+instead of abstract axis movement.
+
+### Fixtures (12 total)
+
+Rendered as interactive SVG elements on the loader graphic. Click any fixture directly
+to toggle it.
+
+| ID           | Type      | Location                                    |
+|--------------|-----------|---------------------------------------------|
+| L1 L2 L4 L5  | work      | cab roof, forward-facing                    |
+| L3           | beacon    | red rotating beacon, cab roof center        |
+| L6           | work      | side, engine hood face                      |
+| L7           | yellow    | boom arm, near bucket pivot                 |
+| HL           | headlight | cab front; 3-state intensity (off/low/high) |
+| FP / RP      | parking   | front + rear marker lamps (amber)           |
+| TL / TR      | turn      | dashboard chevrons at top of viewBox (amber)|
+
+### 6-key function keypad
+
+Each key commands a *lighting function*, not an individual fixture. Keypad LEDs are
+**derived from current fixture state** — single source of truth is fixtures.
+
+| Key         | Function      | Command behavior                                         |
+|-------------|---------------|----------------------------------------------------------|
+| K1 ALL      | All Lights    | All work + parking + headlights on/off                   |
+| K2 PROFILE  | Profile       | Any work on → all work off. All work off → restore saved |
+| K3 BEAM     | Low/High Beam | Toggle low ↔ high (only if headlights already on)        |
+| K4 ROADING  | Roading       | Parking + headlights bundle; **OFF is unconditional**    |
+| K5 BEACON   | Beacon        | Toggle L3                                                |
+| K6 PARKING  | Parking       | Toggle FP + RP together                                  |
+
+### Constraints (enforced frontend-side)
+
+- **High beam requires headlights** — pressing BEAM with headlights off fires a
+  status-banner warning, no state change
+- **Roading OFF is unconditional** — clears parking + headlights regardless of how
+  they were turned on (can be turned on by ALL, ROADING, PARKING, or direct click)
+- **Profile auto-save** — manual work-light toggles update the saved profile snapshot;
+  other fixtures (headlight, beacon, parking, turn signals) are not part of the profile
+
+### Input paths — all three converge on the same `pressKey()` handler
+
+**Direct SVG click** — loader fixture calls `toggleFixture(id)` (bypasses function layer,
+direct fixture mutation). Keypad key calls `pressKey(KEY)` (goes through function layer).
+
+**Keyboard numpad** — spatially mirrors the 2×3 keypad:
+
+```
+Numpad 8 9  →  ALL      PROFILE
+Numpad 5 6  →  BEAM     ROADING
+Numpad 2 3  →  BEACON   PARKING
+```
+
+**PS4 controller** (read by middleware, broadcast in `lights` block, edge-detected
+in frontend):
+
+| PS4 Button    | Function |
+|---------------|----------|
+| △ Triangle    | ALL      |
+| ○ Circle      | PROFILE  |
+| □ Square      | BEAM     |
+| ✕ Cross       | ROADING  |
+| L1            | BEACON   |
+| R1            | PARKING  |
+
+△ still populates `buttons.mode_toggle` for the backhoe view — same physical byte
+read, different semantic block.
+
+**Hardware keypad (Arduino)** — a breadboard-built 6-button keypad mirrors the
+on-screen layout via USB serial. Middleware auto-detects the port on tick 1, reads
+newline-delimited JSON, and OR-merges its state with the PS4 light-buttons before
+broadcast. Frontend behavior is identical regardless of which input path fired the
+press. See [hardware/keypad/README.md](hardware/keypad/README.md) for the build guide.
+
+---
+
 ## Phase 2: Hardware Swap
 
 **ESP32 (wireless/MQTT):**
@@ -384,39 +514,35 @@ The transform pipeline, WebSocket format, and all safety rules remain identical.
 
 ---
 
-## Getting Started (Day 1)
+## Getting Started
+
+Two commands, two terminals:
 
 ```bash
-# 1. Install Node-RED
-npm install -g --unsafe-perm node-red
+# Terminal 1 — middleware (WebSocket server on :3009).
+# Auto-detects PS4 via HID and Arduino keypad via USB serial.
+# Runs cleanly even with no hardware plugged in.
+cd middleware && npm start
 
-# 2. Install gamepad node
-cd ~/.node-red
-npm install node-red-contrib-gamepad
-
-# 3. Start Node-RED
-node-red
-
-# 4. Open browser
-open http://localhost:1880
-
-# 5. Plug in PS4 controller (USB or Bluetooth)
-
-# 6. In Node-RED palette, drag in:
-#    - gamepad input node
-#    - function node (transform pipeline)
-#    - websocket output node (server mode, path: /ws/hmi)
-#    - debug node (to verify output)
-
-# 7. Wire them together and deploy
-
-# 8. Open browser console on your Vite dev server and connect:
-#    const ws = new WebSocket('ws://localhost:1880/ws/hmi');
-#    ws.onmessage = (e) => console.log(JSON.parse(e.data));
+# Terminal 2 — frontend (Vite dev server on :5173)
+cd frontend && npm run dev
 ```
 
-Confirm you see the canonical JSON format in the console with axes moving as you
-move the sticks. That's the pipeline proven end-to-end.
+Open <http://localhost:5173/> — the wheel loader lighting page loads by default.
+Click any fixture to toggle, press numpad `2 3 5 6 8 9` for the keypad, or use
+a PS4 controller / hardware keypad if connected.
+
+**Routes:**
+- `/` — wheel loader lighting (primary demo)
+- `/backhoe` — axis-driven backhoe visualizer
+- `/debug` — raw WebSocket payload inspector
+
+**Alternative middleware path — Node-RED:** [middleware/flows/README.md](middleware/flows/README.md)
+has the Node-RED setup (import `ps4_baseline.json`, install `node-red-contrib-gamepad`).
+Node-RED is expected to become the primary ingestion path when CAN bus support lands
+(see Phase 2 below).
+
+**Hardware keypad** (optional, 6 buttons on a breadboard): [hardware/keypad/README.md](hardware/keypad/README.md)
 
 ---
 
