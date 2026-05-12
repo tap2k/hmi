@@ -4,9 +4,11 @@
  * Target: Arduino UNO R3 (or R4)
  * Baud:   115200
  *
- * Inputs:  6 buttons on D2/D3/D5/D6/D8/D9 (INPUT_PULLUP, wired to GND).
- * Outputs: 6 status LEDs on A0..A5 (used as digital outputs), each in series
- *          with a 220Ω resistor to GND.
+ * Inputs:  6 buttons on D6/D7/D8/D9/D10/D11 (INPUT_PULLUP, wired to GND).
+ * Outputs: 6 status LEDs on A5..A0 (used as digital outputs), each in series
+ *          with a 220Ω resistor to GND. LED column is reversed so the
+ *          left-most LED on the breadboard (A5) is ALL and the right-most (A0)
+ *          is PARKING.
  *
  * Protocol (USB serial, newline-terminated):
  *   Arduino  →  host : {"ALL":1,"PROFILE":0,"BEAM":0,"ROADING":0,"BEACON":1,"PARKING":0}
@@ -21,11 +23,11 @@
 
 const int NUM_KEYS = 6;
 
-const int PINS[NUM_KEYS]    = {  2,     3,        5,      6,        8,       9       };
-const int LED_PINS[NUM_KEYS] = { A0,    A1,       A2,     A3,       A4,      A5      };
+const int PINS[NUM_KEYS]    = {  6,     7,        8,      9,        10,      11      };
+const int LED_PINS[NUM_KEYS] = { A5,    A4,       A3,     A2,       A1,      A0      };
 const char* KEYS[NUM_KEYS]  = { "ALL", "PROFILE", "BEAM", "ROADING", "BEACON", "PARKING" };
 
-const unsigned long DEBOUNCE_MS   = 15;
+const unsigned long DEBOUNCE_MS   = 80;
 const unsigned long HEARTBEAT_MS  = 250;
 const unsigned long LOOP_DELAY_MS = 5;
 

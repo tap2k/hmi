@@ -3,7 +3,7 @@ import { AxisBar } from '../components/AxisBar';
 
 export default function Debug() {
   const { data, connected } = useHmi();
-  const { axes, buttons, meta } = data;
+  const { axes, buttons, lights, meta } = data;
 
   return (
     <div style={styles.page}>
@@ -31,6 +31,15 @@ export default function Debug() {
             <ButtonPill label="deadman"     active={buttons.deadman} />
             <ButtonPill label="mode_toggle" active={buttons.mode_toggle} />
             <ButtonPill label="reset"       active={buttons.reset} />
+          </div>
+        </section>
+
+        <section style={styles.section}>
+          <div style={styles.sectionLabel}>LIGHTS (raw held)</div>
+          <div style={styles.buttonRow}>
+            {Object.keys(lights).map((k) => (
+              <ButtonPill key={k} label={k} active={lights[k]} />
+            ))}
           </div>
         </section>
 

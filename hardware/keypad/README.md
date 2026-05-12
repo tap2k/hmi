@@ -52,16 +52,16 @@ The sketch is pre-configured for these pins:
 
 | Function | Button (input) | Status LED (output) | Numpad |
 |----------|---------------:|--------------------:|-------:|
-| ALL      | D2 | A0 | 8 |
-| PROFILE  | D3 | A1 | 9 |
-| BEAM     | D5 | A2 | 5 |
-| ROADING  | D6 | A3 | 6 |
-| BEACON   | D8 | A4 | 2 |
-| PARKING  | D9 | A5 | 3 |
+| ALL      | D6  | A5 | 8 |
+| PROFILE  | D7  | A4 | 9 |
+| BEAM     | D8  | A3 | 5 |
+| ROADING  | D9  | A2 | 6 |
+| BEACON   | D10 | A1 | 2 |
+| PARKING  | D11 | A0 | 3 |
 
-Buttons live on the digital side (D2–D9); status LEDs live on the analog side
-(A0–A5 used as digital outputs). Keeps inputs and outputs on opposite edges
-of the UNO for clean wiring.
+Buttons live on the digital side (D6–D11); status LEDs live on the analog side
+(A0–A5 used as digital outputs). The LED column runs A5→A0 left-to-right so it
+visually pairs with buttons D6→D11 above it.
 
 ### Layout (3 rows × 2 cols, matches the screen)
 
@@ -72,7 +72,7 @@ of the UNO for clean wiring.
                           ║   USB-B        ║ ──────► computer
                           ║                ║
                           ║  [ ] [ ] [ ] [ ]
-                          ║   D2  D3  ...  D9
+                          ║   D6  D7  ...  D11
                           ║                ║
                           ║  [GND]         ║
                           ╚═════╤══════════╝
@@ -84,19 +84,19 @@ BREADBOARD — top-down view (straddling center gutter):
 
         col A         col B
       ╭───────╮     ╭───────╮
- row1 │  ALL  │     │PROFILE│       → D2 / D3
+ row1 │  ALL  │     │PROFILE│       → D6 / D7
       ╰───┬───╯     ╰───┬───╯
           │             │
           ▼             ▼
       (leg→GND)     (leg→GND)
 
       ╭───────╮     ╭───────╮
- row2 │  BEAM │     │ROADING│       → D5 / D6
+ row2 │  BEAM │     │ROADING│       → D8 / D9
       ╰───┬───╯     ╰───┬───╯
           ▼             ▼
 
       ╭───────╮     ╭───────╮
- row3 │BEACON │     │PARKING│       → D8 / D9
+ row3 │BEACON │     │PARKING│       → D10 / D11
       ╰───┬───╯     ╰───┬───╯
           ▼             ▼
 ```
@@ -107,7 +107,7 @@ Work through these in order. Each ✓ is ~30 seconds.
 
 - [ ] Push all 6 buttons into the breadboard, each straddling the center gutter, arranged in a 3×2 grid with comfortable spacing between them.
 - [ ] Run a jumper from Arduino **GND** to one of the long ground rails on the breadboard.
-- [ ] For each button: jumper **one leg** to the assigned Arduino digital pin (D2/D3/D5/D6/D8/D9).
+- [ ] For each button: jumper **one leg** to the assigned Arduino digital pin (D6/D7/D8/D9/D10/D11).
 - [ ] For each button: jumper the **diagonally opposite leg** of the same button to the ground rail.
 - [ ] Visual check: no jumpers crossing gutters horizontally except the button bodies themselves; no two pins shorted together.
 
@@ -209,7 +209,7 @@ Open <http://localhost:5173/>. Press a physical button — within ~50ms the stat
 | Arduino found but JSON never arrives | Upload succeeded to the wrong board variant | In Tools → Board, confirm "Arduino Uno" is selected |
 | LED doesn't light but button works | LED wired backwards (cathode on pin side) | Flip the LED — long leg to resistor/pin, short leg to GND |
 | LED very dim or nothing | Resistor too large, or wrong pin | Confirm 220Ω (red-red-brown-gold bands), confirm anode row is on the assigned analog pin |
-| Wrong LED lights up for the button pressed | LED pin jumpers in wrong order | Verify A0→ALL, A1→PROFILE, A2→BEAM, A3→ROADING, A4→BEACON, A5→PARKING |
+| Wrong LED lights up for the button pressed | LED pin jumpers in wrong order | Verify A5→ALL, A4→PROFILE, A3→BEAM, A2→ROADING, A1→BEACON, A0→PARKING |
 | All LEDs dim / flickering | Too much current draw or bad resistor | Confirm all 6 resistors present; don't skip any |
 
 ---
