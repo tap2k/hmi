@@ -6,7 +6,7 @@
 //   • press(state) — return a partial state delta { fixtures?, headlight?, status? }
 //
 // To change what a key does, edit the relevant entry. The switch/state-setter
-// plumbing in WheelLoader.jsx does not need to change.
+// plumbing in Console.jsx does not need to change.
 //
 // State shape passed in:
 //   { fixtures, headlight, savedProfile, allOn, allParkOn, roadingOn, profileMatches }

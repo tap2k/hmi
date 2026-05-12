@@ -18,11 +18,16 @@ allows an operator to control a browser-based machine visualization using a phys
 input device. The middleware sits between the input device and the frontend, transforming
 raw hardware signals into clean, normalized control data.
 
-**Primary demo (Phase 1):** a wheel loader lighting control page at `/` — 12 interactive
-SVG light fixtures driven by a 6-key function keypad with PDF-spec semantics (ALL /
-PROFILE / LOW·HIGH BEAM / ROADING / BEACON / PARKING). Three converging input paths:
-direct SVG click, keyboard numpad, and PS4 controller buttons. See the **Lighting
-Demo** section below for details.
+**Primary demo (Phase 1):** an operator console at `/` — one virtual screen that toggles
+between a **dashboard view** (default; gauges, speed, RPM, fuel, battery) and a **lights
+view** (the wheel loader lighting schematic with 12 interactive SVG fixtures). A 6-key
+function keypad sits beside the screen, always visible. The lights icon in the top-right
+of the dashboard switches to the lights view; a `DASHBOARD` button in the corner of the
+lights view switches back. Keypad presses on the dashboard surface a small toast at the
+bottom of the screen; on the lights view they run the PDF-spec semantics (ALL / PROFILE /
+LOW·HIGH BEAM / ROADING / BEACON / PARKING). Three converging input paths: direct SVG
+click, keyboard numpad, and PS4 controller buttons. See the **Lighting Demo** section
+below for details.
 
 **Secondary demo:** a backhoe visualizer at `/backhoe` — proves the pipeline works for
 analog axes (swing, boom, stick, bucket driven by the PS4 sticks).
@@ -82,14 +87,18 @@ risk before introducing the ESP32 or industrial joystick.
 │   │   └── keypad-lights.svg        ← source of truth for the 6-key keypad
 │   └── src/
 │       ├── main.jsx
-│       ├── App.jsx                  ← routes: / wheel-loader, /backhoe, /debug
+│       ├── App.jsx                  ← routes: / console, /backhoe, /debug
 │       ├── hooks/
 │       │   └── useHmi.js            ← WebSocket hook, auto-reconnect
 │       ├── components/
-│       │   └── AxisBar.jsx          ← reusable axis bar for debug view
+│       │   ├── AxisBar.jsx          ← reusable axis bar for debug view
+│       │   ├── DashboardView.jsx    ← default screen: gauges, speed, RPM, lights btn
+│       │   ├── LoaderView.jsx       ← lights screen: 12 fixtures + DASHBOARD btn
+│       │   └── KeypadView.jsx       ← 6-key keypad SVG (LEDs driven by parent)
 │       └── pages/
-│           ├── WheelLoader.jsx      ← primary demo: 12 fixtures + 6-key keypad
-│           ├── WheelLoader.css      ← co-located styles (light states, keypad LEDs)
+│           ├── Console.jsx          ← parent: owns view + lighting state + key router
+│           ├── WheelLoader.css      ← shared styles (light states, keypad LEDs)
+│           ├── keypadBehaviors.js   ← function-key behavior table (LEDs + press deltas)
 │           ├── Debug.jsx            ← raw data debug view (axes + buttons)
 │           └── Backhoe.jsx          ← split-view backhoe visualizer
 └── hardware/                        ← Device firmware
@@ -528,12 +537,15 @@ cd middleware && npm start
 cd frontend && npm run dev
 ```
 
-Open <http://localhost:5173/> — the wheel loader lighting page loads by default.
-Click any fixture to toggle, press numpad `2 3 5 6 8 9` for the keypad, or use
-a PS4 controller / hardware keypad if connected.
+Open <http://localhost:5173/> — the operator console loads with the dashboard view by
+default. Click the lights icon (top-right of the dashboard) to switch to the wheel loader
+lighting schematic; click the `DASHBOARD` button (bottom-left of the lights view) to
+switch back. The 6-key keypad on the right is always visible. Numpad `2 3 5 6 8 9`, a
+PS4 controller, or the hardware keypad drive the keys — pressing a key on the dashboard
+view surfaces a toast; pressing on the lights view runs the lighting behavior.
 
 **Routes:**
-- `/` — wheel loader lighting (primary demo)
+- `/` — operator console (dashboard view by default; lights icon toggles to lights view)
 - `/backhoe` — axis-driven backhoe visualizer
 - `/debug` — raw WebSocket payload inspector
 
