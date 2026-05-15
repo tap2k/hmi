@@ -200,14 +200,11 @@ export default function Console() {
     setEditingProfile(e => e && ({ ...e, name }));
   };
 
-  // ── Keypad press dispatcher: view determines behavior ────────────────────
-  // Dashboard view → acknowledgement toast (no lighting side effects).
-  // Lights view → existing behavior table (suppressed while editing a profile).
+  // ── Keypad press dispatcher ──────────────────────────────────────────────
+  // Runs the lighting behavior on both views so keypad LEDs reflect state
+  // regardless of which view the operator is on. Dashboard adds a toast for
+  // feedback since the lighting schematic isn't visible there.
   const handleKeyPress = (key) => {
-    if (view === 'dashboard') {
-      showToast(`${KEY_LABELS[key] || key} pressed`);
-      return;
-    }
     if (editingProfile) return;
     const behavior = KEY_BEHAVIORS[key];
     if (!behavior) return;
@@ -215,6 +212,7 @@ export default function Console() {
     if (delta.fixtures  !== undefined) setFixtures(delta.fixtures);
     if (delta.headlight !== undefined) setHeadlight(delta.headlight);
     if (delta.status    !== undefined) setStatus(delta.status);
+    if (view === 'dashboard') showToast(`${KEY_LABELS[key] || key} pressed`);
   };
 
   // Listeners need the freshest dispatcher (it closes over current view + state).
